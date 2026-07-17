@@ -56,6 +56,24 @@ modelo); estas capas lo refuerzan en profundidad.
 Verificación: 36 casos en verde (19 inyecciones bloqueadas · 10 clientes
 legítimos permitidos · 4 fugas detectadas · 3 respuestas normales intactas).
 
+## Ronda 4 — Auditoría completa del proyecto (todas las superficies)
+
+Barrido ofensivo del resto del stack (webhook de media, red saliente, infra,
+rutas del panel). Confirmado sólido: auth scrypt de tiempo constante, AES-GCM,
+HMAC timing-safe, RBAC en todo el panel, cookie httpOnly `SameSite=Lax` (mitiga
+CSRF), backup sin `shell` (sin command injection), Docker no-root con tini y sin
+secretos en la imagen. Grietas **nuevas** encontradas y cerradas:
+
+| # | Severidad | Hallazgo | Corrección |
+|---|-----------|----------|-----------|
+| 1 | 🟠 Alta | **SSRF / exfiltración de token en la descarga de audio** — flujo disparable por CUALQUIER cliente (nota de voz). `audioService` hacía `axios.get(url)` sobre la URL que devuelve Meta **adjuntando `WHATSAPP_ACCESS_TOKEN`**, sin validar el host ni el `mediaId`, y sin tope de tamaño (DoS de memoria). | `mediaId` validado (solo dígitos); URL de descarga validada contra **allowlist de hosts de Meta** antes de mandar el token; `maxContentLength`/`maxBodyLength` (20MB) + timeout. Verificado: bloquea hosts atacantes, lookalikes, IMDS `169.254.169.254`, `file://`/`http://`, path traversal y query injection (15/15). (`features/audioHandler/audioService.ts`) |
+| 2 | 🟡 Media | **`PUT /config` sin tope de tamaño** — el blob JSON se re-parsea en CADA mensaje al construir el system prompt; uno enorme degrada todo el pipeline de IA (DoS de CPU). | Tope de 64KB (`413` si se excede). (`routes/dashboard.ts`) |
+| 3 | 🟡 Media | **`/health/detailed` sin RBAC** — cualquier usuario autenticado veía memoria/uptime/estado de servicios. | Requiere rol ADMIN (`authorizeAdmin`). (`server.ts`) |
+| 4 | 🟢 Baja | **Login sin tope de longitud** en email/password → scrypt/consulta sobre entrada de hasta 2MB. | Cap de 254 (email) / 1024 (password). (`routes/auth.ts`) |
+
+Verificación: 15 casos SSRF/validación en verde (hosts Meta permitidos; atacante,
+IMDS, lookalike, esquemas peligrosos y `mediaId` manipulados bloqueados).
+
 ## Verificación
 
 13 pruebas de runtime + 2 de fail-closed de producción, todas en verde:

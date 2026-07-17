@@ -25,8 +25,10 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
     config: { rateLimit: { max: LOGIN_MAX_ATTEMPTS, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const body = request.body as { email?: unknown; password?: unknown };
-    const email = typeof body?.email === 'string' ? body.email : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
+    // Tope de longitud: evita que una entrada gigante (hasta el bodyLimit de 2MB)
+    // haga trabajar de más a scrypt/consulta. 254 = máx RFC de email.
+    const email = typeof body?.email === 'string' ? body.email.slice(0, 254) : '';
+    const password = typeof body?.password === 'string' ? body.password.slice(0, 1024) : '';
     if (!email || !password) return reply.code(400).send({ message: 'Email y contrasena requeridos' });
 
     const user = await prisma.user.findUnique({ where: { email } });

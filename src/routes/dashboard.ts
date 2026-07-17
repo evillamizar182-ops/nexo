@@ -140,6 +140,17 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       updatedConfigString = existing.config;
     }
 
+    // Tope de tamaño: este blob se re-parsea (JSON.parse) en CADA mensaje al
+    // construir el system prompt. Un blob enorme degradaría todo el pipeline de
+    // la IA (DoS de CPU). 64KB es holgado para una config real de negocio.
+    const MAX_CONFIG_BYTES = 64 * 1024;
+    if (Buffer.byteLength(updatedConfigString, 'utf8') > MAX_CONFIG_BYTES) {
+      return reply.code(413).send({
+        error: 'CONFIG_TOO_LARGE',
+        message: 'La configuración excede el tamaño máximo permitido (64KB).',
+      });
+    }
+
     if (existing) {
       await db.businessConfig.update({
         where: { id: existing.id },

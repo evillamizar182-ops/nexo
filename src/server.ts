@@ -153,7 +153,7 @@ async function build() {
 
   // Usa el decorator `authenticate`: verifica firma, expiración Y revocación
   // (un token deslogueado ya no puede leer el estado detallado del sistema).
-  server.get('/health/detailed', { onRequest: [(server as any).authenticate] }, async (request, reply) => {
+  server.get('/health/detailed', { onRequest: [(server as any).authenticate, (server as any).authorizeAdmin] }, async (request, reply) => {
     let dbStatus = 'DISCONNECTED';
     try {
       await prisma.$queryRaw`SELECT 1`;
