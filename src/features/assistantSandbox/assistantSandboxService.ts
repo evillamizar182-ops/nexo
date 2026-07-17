@@ -117,6 +117,12 @@ No tienes la herramienta reserve_appointment disponible — NUNCA digas que ya a
     break;
   }
 
+  // Fail-closed: si se agotaron las iteraciones con el modelo aún pidiendo tools,
+  // no devolvemos texto parcial.
+  if (response!.stop_reason === 'tool_use') {
+    return 'No pude completar esa consulta ahora mismo. Intenta reformularla o vuelve a intentarlo.';
+  }
+
   const textBlock = response!.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
   return textBlock?.text ?? 'Disculpa, hubo un problema procesando tu pregunta.';
 }

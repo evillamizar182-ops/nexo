@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { hashPII, encryptPII } from '../utils/crypto';
 import { redis } from '../utils/redis';
 import { CircuitBreaker } from '../utils/circuit-breaker';
-import { sanitizeUserMessage } from '../utils/sanitizer';
+import { sanitizeUserMessage, containsPromptLeak } from '../utils/sanitizer';
 import { getSystemPrompt } from '../ai/prompts';
 import { TOOL_DEFINITIONS } from '../ai/tools/definitions';
 import { executeTool } from '../ai/tools/executor';
@@ -92,11 +92,15 @@ export class ConversationService {
 
     const systemPrompt = getSystemPrompt(business);
 
-    const history = await db.messageLog.findMany({
+    // Ventana DESLIZANTE: tomamos los MÁS RECIENTES (desc) y los devolvemos a
+    // orden cronológico. Con `asc + take` se cargaban siempre los 20 PRIMEROS
+    // mensajes, dejando al modelo sin contexto reciente y —peor— permitiendo
+    // que una inyección colocada al inicio quedara anclada de por vida.
+    const history = (await db.messageLog.findMany({
       where: { conversationId: conversation.id },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: MAX_HISTORY_MESSAGES,
-    });
+    })).reverse();
 
     const messages: Anthropic.MessageParam[] = history.map(m => ({
       role: m.role === 'user' ? 'user' as const : 'assistant' as const,
@@ -214,14 +218,29 @@ export class ConversationService {
       break;
     }
 
-    // 8. EXTRACT TEXT RESPONSE
-    const textBlock = response!.content.find(
-      (b): b is Anthropic.TextBlock => b.type === 'text'
-    );
-    const replyText = textBlock?.text ?? 'Disculpa, hubo un problema procesando tu solicitud.';
+    // 8. FAIL-CLOSED: si el loop se agotó y el modelo AÚN quería usar tools,
+    // no hay respuesta final legítima. No exponemos texto parcial (que podría
+    // venir de un intento de manipulación); respondemos algo seguro y salimos.
+    let finalResponse: string;
+    if (response!.stop_reason === 'tool_use') {
+      finalResponse = 'Estoy teniendo problemas para completar eso ahora mismo. ¿Puedes intentarlo de nuevo en un momento?';
+    } else {
+      // EXTRACT TEXT RESPONSE
+      const textBlock = response!.content.find(
+        (b): b is Anthropic.TextBlock => b.type === 'text'
+      );
+      const replyText = textBlock?.text ?? 'Disculpa, hubo un problema procesando tu solicitud.';
 
-    // Truncate to 3 sentences
-    const finalResponse = this.truncateResponse(replyText);
+      // GUARDIA DE SALIDA: si la respuesta intenta filtrar el system prompt o
+      // los nombres internos de las tools (p. ej. por una inyección lograda),
+      // se descarta y se responde de forma segura. El prompt interno nunca sale.
+      if (containsPromptLeak(replyText)) {
+        finalResponse = 'Solo puedo ayudarte con servicios del negocio: información, disponibilidad, reservas e inventario.';
+      } else {
+        // Truncate to 3 sentences
+        finalResponse = this.truncateResponse(replyText);
+      }
+    }
 
     // 9. PERSIST ASSISTANT RESPONSE
     await db.messageLog.create({
