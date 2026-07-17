@@ -1,0 +1,42 @@
+# ══════════════════════════════════════════════════════════════════
+#  Nexo IA backend — persistente (reinicia solo salvo que TÚ lo pares).
+#  DB (Postgres/Supabase) y Redis (Upstash) son externos: no van aquí.
+#  Uso:
+#    Primera vez (sincroniza esquema):  RUN_DB_PUSH=true docker compose up -d --build
+#    Después:                           docker compose up -d
+#    Logs:                              docker compose logs -f
+#    Parar:                             docker compose down
+# ══════════════════════════════════════════════════════════════════
+services:
+  nexo-backend:
+    build: .
+    image: nexo-ia-backend:latest
+    container_name: nexo-backend
+    restart: unless-stopped
+
+    # Inyecta los secretos de producción en el contenedor (NO se hornean en la imagen).
+    env_file:
+      - .env.production
+
+    # RUN_DB_PUSH=true la primera vez / tras cambiar el esquema; luego déjalo en false.
+    environment:
+      RUN_DB_PUSH: "${RUN_DB_PUSH:-false}"
+
+    # Publica solo en localhost del host: tu reverse-proxy (nginx/Caddy) le pega por aquí.
+    # Para exponerlo directo a la red, cambia a "3100:3100".
+    ports:
+      - "127.0.0.1:3100:3100"
+
+    # Los backups de !backup (pg_dump) persisten en el host.
+    volumes:
+      - ./backups:/app/backups
+
+    # Endurecimiento del contenedor.
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

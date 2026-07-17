@@ -1,0 +1,25 @@
+# No meter dependencias ni build al contexto (se generan dentro de la imagen)
+node_modules
+dist
+dashboard
+
+# NUNCA copiar secretos a la imagen — se inyectan en runtime (--env-file / compose)
+.env
+.env.*
+
+# Datos locales / dumps / logs
+prisma/dev.db
+*.db
+*.sql
+backups
+*.log
+
+# Metadatos y scripts de escritorio
+.git
+.agents
+.vscode
+docs
+*.bat
+Dockerfile
+.dockerignore
+docker-compose.yml

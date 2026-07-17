@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Local/demo usa SQLite (autocontenido, sin servicios externos).
+  // Para producción con Supabase/PostgreSQL: cambia provider a "postgresql"
+  // y DATABASE_URL a la cadena de conexión de Postgres.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model BusinessConfig {
+  id        String   @id @default("singleton")
+  name      String
+  config    String
+  updatedAt DateTime @updatedAt
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  durationMin Int
+  isActive    Boolean  @default(true)
+}
+
+model Client {
+  id             String   @id @default(uuid())
+  phoneHash      String   @unique
+  // Número real cifrado (AES-256-GCM, reversible SOLO por el servidor) — se
+  // necesita para acciones que requieren el teléfono real (enviar WhatsApp
+  // manual desde el panel). phoneHash sigue siendo el identificador para
+  // búsquedas/URLs; nunca se expone el número real al frontend.
+  phoneEncrypted String?
+  name           String?
+  metadata       String?
+  createdAt      DateTime @default(now())
+  appointments   Appointment[]
+  conversations  Conversation[]
+}
+
+model StaffMember {
+  id               String   @id @default(uuid())
+  name             String
+  role             String
+  isActive         Boolean  @default(true)
+  // Comisión del barbero: 'PERCENTAGE' (commissionValue = % del precio) o 'FIXED' (monto directo).
+  commissionType   String   @default("PERCENTAGE")
+  commissionValue  Float    @default(50)
+  appointments     Appointment[]
+  holds            SlotHold[]
+  completedServices CompletedService[]
+}
+
+model Appointment {
+  id            String   @id @default(uuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  staffId       String
+  staff         StaffMember @relation(fields: [staffId], references: [id])
+  startTime     DateTime
+  endTime       DateTime
+  status        String
+  serviceName   String
+  price         Float
+  createdAt     DateTime @default(now())
+}
+
+model SlotHold {
+  id        String      @id @default(uuid())
+  staffId   String
+  staff     StaffMember @relation(fields: [staffId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+  @@index([expiresAt])
+}
+
+model Conversation {
+  id            String   @id @default(uuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  provider      String
+  status        String   @default("OPEN")
+  createdAt     DateTime @default(now())
+  logs          MessageLog[]
+}
+
+model MessageLog {
+  id             String   @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String
+  content        String
+  tokens         Int?
+  createdAt      DateTime @default(now())
+}
+
+model RevokedToken {
+  token     String   @id
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Estado global del bot (pausa/reanuda). Reemplaza la vieja tabla "SilentMode"
+// (usaba TEXT[] + array_append de PostgreSQL, incompatible con SQLite).
+model BotState {
+  id        String   @id @default("singleton")
+  paused    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+// Clientes silenciados individualmente (el bot no les responde).
+model MutedClient {
+  phoneHash String   @id
+  mutedAt   DateTime @default(now())
+}
+
+// Servicio completado y facturado — base del cierre diario y del cálculo de comisión.
+model CompletedService {
+  id          String      @id @default(uuid())
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  serviceId   String?
+  serviceName String
+  price       Float
+  commission  Float
+  date        DateTime    @default(now())
+  @@index([date])
+  @@index([staffId])
+}

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Secrets / environment — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Databases & dumps
+*.db
+*.sql
+/backups/
+
+# Logs & crash reports (may contain stack traces / PII)
+*.log
+crash.log
+logs/
+
+# Agent/tooling metadata
+.agents/
