@@ -15,6 +15,7 @@ const DEDUP_TTL_SECONDS = 300; // 5 min idempotency window
 
 const anthropic = new Anthropic({
   apiKey: env.ANTHROPIC_API_KEY,
+  ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}),
 });
 
 const anthropicBreaker = new CircuitBreaker('anthropic', {

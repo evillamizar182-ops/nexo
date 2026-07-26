@@ -19,7 +19,10 @@ const MAX_HISTORY_MESSAGES = 20;
 
 const SANDBOX_TOOLS = TOOL_DEFINITIONS.filter(t => t.name !== 'reserve_appointment');
 
-const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({
+  apiKey: env.ANTHROPIC_API_KEY,
+  ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}),
+});
 
 const anthropicBreaker = new CircuitBreaker('anthropic-sandbox', {
   failureThreshold: 3,

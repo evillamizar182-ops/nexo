@@ -41,8 +41,12 @@ const envSchema = z.object({
   PHONE_ENC_KEY: z.string().regex(/^[0-9a-f]{64}$/i, 'Debe ser 64 caracteres hex (32 bytes)'),
 
   // AI
-  ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
+  ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-20250514'),
+  // Endpoint compatible con la Messages API de Anthropic. Vacío => api.anthropic.com
+  // (Claude real). Se puede apuntar a un proveedor compatible (p. ej. Z.AI GLM)
+  // para usar otro modelo sin tocar el tool loop; ajusta también ANTHROPIC_MODEL.
+  ANTHROPIC_BASE_URL: z.string().url().optional(),
 
   // WhatsApp (Meta Cloud API)
   WHATSAPP_VERIFY_TOKEN: z.string().min(1),

@@ -1,6 +1,14 @@
+import { DateTime } from 'luxon';
 import { db } from '../../repositories/index';
 import { validateToolInput } from './validator';
 import { insensitive } from '../../utils/db';
+
+// Zona horaria del negocio. Las horas de cita las escribe/lee la IA en hora local
+// del negocio (igual que el system prompt en ai/prompts.ts). Anclamos aquí para
+// que el Date almacenado NO dependa de la TZ del sistema operativo del servidor
+// (en producción suele ser UTC → las citas quedarían corridas varias horas).
+const BUSINESS_TZ = 'America/Bogota';
+const localDate = (iso: string): Date => DateTime.fromISO(iso, { zone: BUSINESS_TZ }).toJSDate();
 
 interface ToolContext {
   clientPhone: string;
@@ -39,8 +47,8 @@ export async function executeTool(
         return { available: false, message: 'No encontré ese barbero en el equipo.' };
       }
 
-      const startOfDay = new Date(`${validInput.fecha}T00:00:00`);
-      const endOfDay = new Date(`${validInput.fecha}T23:59:59`);
+      const startOfDay = localDate(`${validInput.fecha}T00:00:00`);
+      const endOfDay = localDate(`${validInput.fecha}T23:59:59`);
 
       const existingAppointments = await db.appointment.findMany({
         where: {
@@ -64,7 +72,7 @@ export async function executeTool(
       for (const member of staff) {
         for (let hour = 8; hour < 20; hour++) {
           for (const minute of [0, 30]) {
-            const slotStart = new Date(`${validInput.fecha}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+            const slotStart = localDate(`${validInput.fecha}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
             const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
 
             const isBooked = existingAppointments.some(
@@ -113,7 +121,7 @@ export async function executeTool(
         return { error: 'SERVICE_NOT_FOUND', message: `No encontré el servicio "${validInput.servicio}".` };
       }
 
-      const startTime = new Date(`${validInput.fecha}T${validInput.hora}:00`);
+      const startTime = localDate(`${validInput.fecha}T${validInput.hora}:00`);
       const endTime = new Date(startTime.getTime() + service.durationMin * 60 * 1000);
 
       // Check for conflicts
