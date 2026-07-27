@@ -50,6 +50,8 @@ npm run db:push:prod            # crea el esquema en Postgres (o prisma:migrate:
 ```
 Con `USE_MOCKS=true` (o `ANTHROPIC_API_KEY=sk-ant-fake`) la IA responde simulada, sin llamar a Anthropic (ver `src/mocks/`).
 
+El cliente `Anthropic` (`services/conversation.service.ts` y `features/assistantSandbox`) soporta `ANTHROPIC_BASE_URL` opcional (`config/env.ts`) para apuntar a un proveedor compatible con la Messages API distinto de Claude (p. ej. Z.AI GLM) sin tocar el tool loop — útil como puente mientras no hay crédito de Anthropic. `ANTHROPIC_MODEL` debe cambiar junto con el proveedor.
+
 ### Carga del entorno
 
 El backend hace `import 'dotenv/config'` (`src/server.ts`), que carga **`.env`** — no `.env.production`. Para desplegar en producción, el archivo de secretos de producción debe terminar llamándose `.env` (o exportar las vars en el entorno del host). `start-prod.js` también parsea `.env` a mano antes de lanzar. Para apuntar dotenv a otro archivo en un comando puntual: `DOTENV_CONFIG_PATH=.env.production`.
@@ -64,7 +66,7 @@ El flujo real de un mensaje de WhatsApp cruza varios archivos; entenderlo es la 
 2. Antes de la IA corren interceptores/adapters: **admin commands** (`features/adminCommands`, comandos `!` de administradores autorizados por `ADMIN_NUMBERS`/`ADMIN_PHONE`), **silent mode** (`features/silentMode`, pausa global o muteo por cliente), **audio handler** (`features/audioHandler`, transcribe notas de voz; gate `ENABLE_AUDIO_HANDLER`) y **vision ERP** (`features/visionERP`, registra ventas por foto).
 3. **`services/buffer.service.ts`** — agrupa ráfagas: encola en Redis (`rpush`) y usa un lock con TTL (`BUFFER_WINDOW_MS`, ~5 s) para juntar varios mensajes seguidos del mismo número en una sola llamada a la IA.
 4. **`services/conversation.service.ts:processMessage`** — corazón de la conversación: dedup por `waMessageId` en Redis → sanitiza + chequeo anti prompt-injection (`utils/sanitizer.ts`) → upsert de `Client` → construye contexto (**ventana deslizante de los `MAX_HISTORY_MESSAGES=20` más recientes**, `orderBy desc` + `reverse`) → llama a Anthropic con `TOOL_DEFINITIONS` en un **tool loop** de hasta `MAX_TOOL_ITERATIONS=5`. Protegido por Circuit Breaker (`anthropic`).
-5. **`ai/tools/`** — `definitions.ts` (esquema de tools), `validator.ts` (valida args), `executor.ts` (`executeTool` ejecuta contra Prisma: disponibilidad, agendar cita, inventario, etc.). Prompt de sistema en `ai/prompts.ts` (se construye desde `BusinessConfig`, sanitizando cada campo).
+5. **`ai/tools/`** — `definitions.ts` (esquema de tools), `validator.ts` (valida args), `executor.ts` (`executeTool` ejecuta contra Prisma: disponibilidad, agendar cita, inventario, etc.). Prompt de sistema en `ai/prompts.ts` (se construye desde `BusinessConfig`, sanitizando cada campo). Las horas de cita se anclan a `BUSINESS_TZ` (`America/Bogota`, hardcoded en `executor.ts`, vía `localDate()` con luxon) — **no** con `new Date()` a secas, que dependería de la TZ del SO del host (en prod normalmente UTC, corriendo las citas varias horas).
 6. La respuesta vuelve por **`services/whatsapp.provider.ts:sendMessage`**, que respeta la ventana de 24 h de Meta, reintenta y clasifica errores. Para OTP/plantillas de autenticación (sin ventana 24 h) usa `sendAuthCode`.
 
 ### Defensa del agente IA (prompt injection / fuga de prompt)
